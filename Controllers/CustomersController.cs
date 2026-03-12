@@ -212,5 +212,220 @@ namespace OnlineShopApi.Controllers
 
             return Ok(result);
         }
+
+        // Hiển thị tất cả các khách hàng mua hàng với tổng số tiền mua hàng
+        // gồm các fields: Id, Name, Address, PhoneNumber, Total
+        // Dùng INNER JOIN + GROUP BY với lệnh SUM
+        [HttpGet("customers-total")]
+        public async Task<IActionResult> GetCustomersTotal()
+        {
+            var result = await _db.Customers
+                .Join(_db.Orders,
+                    c => c.CustomerId,
+                    o => o.CustomerId,
+                    (c, o) => new { c, o })
+                .Join(_db.OrderDetails,
+                    co => co.o.OrderId,
+                    od => od.OrderId,
+                    (co, od) => new
+                    {
+                        co.c.CustomerId,
+                        co.c.FullName,
+                        co.c.Address,
+                        co.c.Phone,
+                        ThanhTien = od.Quantity * od.UnitPrice * (1 - od.Discount / 100m)
+                    })
+                .GroupBy(x => new
+                {
+                    x.CustomerId,
+                    x.FullName,
+                    x.Address,
+                    x.Phone
+                })
+                .Select(g => new
+                {
+                    Id = g.Key.CustomerId,
+                    Name = g.Key.FullName,
+                    Address = g.Key.Address,
+                    PhoneNumber = g.Key.Phone,
+                    Total = g.Sum(x => x.ThanhTien)
+                })
+                .OrderByDescending(x => x.Total)
+                .ToListAsync();
+
+            return Ok(result);
+        }
+
+        // Hiển thị tất cả các khách hàng có địa chỉ ở @Address
+        [HttpGet("customers-by-address")]
+        public async Task<IActionResult> GetCustomersByAddress(string Address)
+        {
+            var result = await _db.Customers
+                .Where(c => c.Address.Contains(Address))
+                .Select(c => new
+                {
+                    Id = c.CustomerId,
+                    Name = c.FullName,
+                    Address = c.Address,
+                    PhoneNumber = c.Phone,
+                    BirthDate = c.BirthDate
+                })
+                .ToListAsync();
+
+            return Ok(result);
+        }
+
+        // Hiển thị tất cả các khách hàng có năm sinh @YearOfBirth
+        [HttpGet("customers-by-year-of-birth")]
+        public async Task<IActionResult> GetCustomersByYearOfBirth(int YearOfBirth)
+        {
+            var result = await _db.Customers
+                .Where(c => c.BirthDate.HasValue && c.BirthDate.Value.Year == YearOfBirth)
+                .Select(c => new
+                {
+                    Id = c.CustomerId,
+                    Name = c.FullName,
+                    Address = c.Address,
+                    PhoneNumber = c.Phone,
+                    BirthDate = c.BirthDate
+                })
+                .ToListAsync();
+
+            return Ok(result);
+        }
+
+        // Hiển thị tất cả các khách hàng có tuổi từ @MinAge đến @MaxAge
+        [HttpGet("customers-by-age-range")]
+        public async Task<IActionResult> GetCustomersByAgeRange(int MinAge, int MaxAge)
+        {
+            int currentYear = DateTime.Now.Year;
+
+            var result = await _db.Customers
+                .Where(c => c.BirthDate.HasValue &&
+                       (currentYear - c.BirthDate.Value.Year) >= MinAge &&
+                       (currentYear - c.BirthDate.Value.Year) <= MaxAge)
+                .Select(c => new
+                {
+                    Id = c.CustomerId,
+                    Name = c.FullName,
+                    Address = c.Address,
+                    PhoneNumber = c.Phone,
+                    BirthDate = c.BirthDate,
+                    Age = currentYear - c.BirthDate.Value.Year
+                })
+                .ToListAsync();
+
+            return Ok(result);
+        }
+
+        // Hiển thị tất cả các khách hàng có sinh nhật là @Date
+        [HttpGet("customers-by-birthday")]
+        public async Task<IActionResult> GetCustomersByBirthday(DateTime Date)
+        {
+            var result = await _db.Customers
+                .Where(c => c.BirthDate.HasValue &&
+                            c.BirthDate.Value.Month == Date.Month &&
+                            c.BirthDate.Value.Day == Date.Day)
+                .Select(c => new
+                {
+                    Id = c.CustomerId,
+                    Name = c.FullName,
+                    Address = c.Address,
+                    PhoneNumber = c.Phone,
+                    BirthDate = c.BirthDate
+                })
+                .ToListAsync();
+
+            return Ok(result);
+        }
+
+        // Hiển thị tất cả các khách hàng mua hàng với tổng số tiền
+        // trong khoảng từ ngày @FromDate đến ngày @ToDate
+        [HttpGet("customers-total-by-date-range-detail")]
+        public async Task<IActionResult> GetCustomersTotalByDateRangeDetail(DateTime FromDate, DateTime ToDate)
+        {
+            var result = await _db.Customers
+                .Join(_db.Orders.Where(o => o.OrderDate.Date >= FromDate.Date
+                                         && o.OrderDate.Date <= ToDate.Date),
+                    c => c.CustomerId,
+                    o => o.CustomerId,
+                    (c, o) => new { c, o })
+                .Join(_db.OrderDetails,
+                    co => co.o.OrderId,
+                    od => od.OrderId,
+                    (co, od) => new
+                    {
+                        co.c.CustomerId,
+                        co.c.FullName,
+                        co.c.Address,
+                        co.c.Phone,
+                        ThanhTien = od.Quantity * od.UnitPrice * (1 - od.Discount / 100m)
+                    })
+                .GroupBy(x => new
+                {
+                    x.CustomerId,
+                    x.FullName,
+                    x.Address,
+                    x.Phone
+                })
+                .Select(g => new
+                {
+                    Id = g.Key.CustomerId,
+                    Name = g.Key.FullName,
+                    Address = g.Key.Address,
+                    PhoneNumber = g.Key.Phone,
+                    Total = g.Sum(x => x.ThanhTien)
+                })
+                .OrderByDescending(x => x.Total)
+                .ToListAsync();
+
+            return Ok(result);
+        }
+
+        //Function Fullname
+        [HttpGet("get-fullname")]
+        public async Task<IActionResult> GetFullName(string firstName, string lastName)
+        {
+            var result = await _db.Database
+                .SqlQuery<string>($"SELECT dbo.udf_GetFullName({firstName}, {lastName}) AS Value")
+                .FirstOrDefaultAsync();
+
+            return Ok(new
+            {
+                FirstName = firstName,
+                LastName = lastName,
+                FullName = result
+            });
+        }
+
+        //Function CalculateAge
+        [HttpGet("calculate-age")]
+        public async Task<IActionResult> CalculateAge(int birthYear)
+        {
+            var result = await _db.Database
+                .SqlQuery<int>($"SELECT dbo.udf_CalculateAge({birthYear}) AS Value")
+                .FirstOrDefaultAsync();
+
+            return Ok(new
+            {
+                BirthYear = birthYear,
+                Age = result
+            });
+        }
+
+        //Function RemoveUnicode
+        [HttpGet("remove-unicode")]
+        public async Task<IActionResult> RemoveUnicode(string text)
+        {
+            var result = await _db.Database
+                .SqlQuery<string>($"SELECT dbo.udf_ConvertUnicodeToNonUnicode({text}) AS Value")
+                .FirstOrDefaultAsync();
+
+            return Ok(new
+            {
+                Original = text,
+                Converted = result
+            });
+        }
     }
 }

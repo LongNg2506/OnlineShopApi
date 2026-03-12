@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using OnlineShop.Data;
+using OnlineShopApi.Dtos;
 
 namespace OnlineShopApi.Controllers
 {
@@ -45,6 +46,48 @@ namespace OnlineShopApi.Controllers
                     TongDoanhThu = g.Sum(x => x.ThanhTien)
                 })
                 .OrderByDescending(x => x.TongDoanhThu)
+                .ToListAsync();
+
+            return Ok(result);
+        }
+
+        // Hiển thị tất cả danh mục với số lượng hàng hóa trong mỗi danh mục
+        // gồm các fields: Id, Name, Description, NumberOfProducts
+        // Dùng INNER JOIN + GROUP BY với lệnh COUNT
+        [HttpGet("categories-product-count-detail")]
+        public async Task<IActionResult> GetCategoriesProductCountDetail()
+        {
+            var result = await _db.Categories
+                .Join(_db.Products,
+                    c => c.CategoryId,
+                    p => p.CategoryId,
+                    (c, p) => new { c, p })
+                .GroupBy(x => new
+                {
+                    x.c.CategoryId,
+                    x.c.CategoryName,
+                    x.c.Description
+                })
+                .Select(g => new
+                {
+                    Id = g.Key.CategoryId,
+                    Name = g.Key.CategoryName,
+                    Description = g.Key.Description,
+                    NumberOfProducts = g.Count()
+                })
+                .ToListAsync();
+
+            return Ok(result);
+        }
+
+        [HttpGet("category-prices")]
+        public async Task<IActionResult> GetCategoryPrices(int categoryId)
+        {
+            var result = await _db.Database
+                .SqlQuery<CategoryPriceDto>($"""
+            SELECT *
+            FROM dbo.udf_Category_GetCategoryPrices({categoryId})
+        """)
                 .ToListAsync();
 
             return Ok(result);

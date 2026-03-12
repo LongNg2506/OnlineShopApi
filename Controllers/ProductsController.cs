@@ -327,22 +327,201 @@ namespace OnlineShopApi.Controllers
             return Ok(result);
         }
 
-        [HttpGet("products-not-sold")]
-        public async Task<IActionResult> GetProductsNotSold()
+        // Hiển thị tất cả các mặt hàng không bán được
+        // gồm các fields: Id, Name, Price, Discount, CategoryId, CategoryName, SupplierId, SupplierName
+        [HttpGet("products-not-sold-detail")]
+        public async Task<IActionResult> GetProductsNotSoldDetail()
         {
             var result = await _db.Products
                 .Where(p => !_db.OrderDetails.Any(od => od.ProductId == p.ProductId))
                 .Select(p => new
                 {
-                    p.ProductId,
-                    p.ProductName,
-                    p.Price,
-                    p.Discount,
-                    p.Stock
+                    Id = p.ProductId,
+                    Name = p.ProductName,
+                    Price = p.Price,
+                    Discount = p.Discount,
+                    CategoryId = p.CategoryId,
+                    CategoryName = p.Category.CategoryName,
+                    SupplierId = p.SupplierId,
+                    SupplierName = p.Supplier.SupplierName
                 })
                 .ToListAsync();
 
             return Ok(result);
+        }
+
+        // Hiển thị danh sách các mức giảm giá của cửa hàng
+        // cùng với số lượng mặt hàng, tổng giá gốc, tổng giá đã giảm và số tiền giảm
+        [HttpGet("discount-summary")]
+        public async Task<IActionResult> GetDiscountSummary()
+        {
+            var result = await _db.Products
+                .GroupBy(p => p.Discount)
+                .Select(g => new
+                {
+                    Discount = g.Key,
+                    NumberOfProducts = g.Count(),
+                    OriginalTotal = g.Sum(x => x.Price),
+                    DiscountedTotal = g.Sum(x => x.Price * (1 - x.Discount / 100m)),
+                    SavedAmount = g.Sum(x => x.Price) - g.Sum(x => x.Price * (1 - x.Discount / 100m))
+                })
+                .OrderBy(x => x.Discount)
+                .ToListAsync();
+
+            return Ok(result);
+        }
+
+        // Hiển thị tất cả các mặt hàng cùng với thông tin chi tiết của Category và Supplier
+        // gồm các fields: Id, Name, Price, Discount, CategoryId, CategoryName, SupplierId, SupplierName
+        [HttpGet("products-category-supplier-detail")]
+        public async Task<IActionResult> GetProductsCategorySupplierDetail()
+        {
+            var result = await _db.Products
+                .Select(p => new
+                {
+                    Id = p.ProductId,
+                    Name = p.ProductName,
+                    Price = p.Price,
+                    Discount = p.Discount,
+                    CategoryId = p.CategoryId,
+                    CategoryName = p.Category.CategoryName,
+                    SupplierId = p.SupplierId,
+                    SupplierName = p.Supplier.SupplierName
+                })
+                .ToListAsync();
+
+            return Ok(result);
+        }
+
+        // Hiển thị tất cả các mặt hàng có giảm giá <= @MinDiscount
+        [HttpGet("products-discount-less-than")]
+        public async Task<IActionResult> GetProductsDiscountLessThan(decimal MinDiscount)
+        {
+            var result = await _db.Products
+                .Where(p => p.Discount <= MinDiscount)
+                .Select(p => new
+                {
+                    Id = p.ProductId,
+                    Name = p.ProductName,
+                    Price = p.Price,
+                    Discount = p.Discount,
+                    CategoryId = p.CategoryId,
+                    CategoryName = p.Category.CategoryName,
+                    SupplierId = p.SupplierId,
+                    SupplierName = p.Supplier.SupplierName
+                })
+                .ToListAsync();
+
+            return Ok(result);
+        }
+
+        // Hiển thị tất cả các mặt hàng có số lượng tồn kho <= @MinStock
+        [HttpGet("products-stock-less-than")]
+        public async Task<IActionResult> GetProductsStockLessThan(int MinStock)
+        {
+            var result = await _db.Products
+                .Where(p => p.Stock <= MinStock)
+                .Select(p => new
+                {
+                    Id = p.ProductId,
+                    Name = p.ProductName,
+                    Price = p.Price,
+                    Discount = p.Discount,
+                    Stock = p.Stock,
+                    CategoryId = p.CategoryId,
+                    CategoryName = p.Category.CategoryName,
+                    SupplierId = p.SupplierId,
+                    SupplierName = p.Supplier.SupplierName
+                })
+                .ToListAsync();
+
+            return Ok(result);
+        }
+
+        // Hiển thị tất cả các mặt hàng có Giá bán sau khi đã giảm giá <= @Total
+        [HttpGet("products-final-price-less-than")]
+        public async Task<IActionResult> GetProductsFinalPriceLessThan(decimal Total)
+        {
+            var result = await _db.Products
+                .Where(p => p.Price * (1 - p.Discount / 100m) <= Total)
+                .Select(p => new
+                {
+                    Id = p.ProductId,
+                    Name = p.ProductName,
+                    Price = p.Price,
+                    Discount = p.Discount,
+                    FinalPrice = p.Price * (1 - p.Discount / 100m),
+                    Stock = p.Stock,
+                    CategoryId = p.CategoryId,
+                    CategoryName = p.Category.CategoryName,
+                    SupplierId = p.SupplierId,
+                    SupplierName = p.Supplier.SupplierName
+                })
+                .ToListAsync();
+
+            return Ok(result);
+        }
+
+        // Hiển thị tất cả các mặt hàng không bán được trong khoảng từ ngày @FromDate đến ngày @ToDate
+        [HttpGet("products-not-sold-by-date-range")]
+        public async Task<IActionResult> GetProductsNotSoldByDateRange(DateTime FromDate, DateTime ToDate)
+        {
+            var result = await _db.Products
+                .Where(p => !_db.OrderDetails
+                    .Join(_db.Orders,
+                        od => od.OrderId,
+                        o => o.OrderId,
+                        (od, o) => new { od, o })
+                    .Any(x => x.od.ProductId == p.ProductId
+                           && x.o.OrderDate.Date >= FromDate.Date
+                           && x.o.OrderDate.Date <= ToDate.Date))
+                .Select(p => new
+                {
+                    Id = p.ProductId,
+                    Name = p.ProductName,
+                    Price = p.Price,
+                    Discount = p.Discount,
+                    Stock = p.Stock,
+                    CategoryId = p.CategoryId,
+                    CategoryName = p.Category.CategoryName,
+                    SupplierId = p.SupplierId,
+                    SupplierName = p.Supplier.SupplierName
+                })
+                .ToListAsync();
+
+            return Ok(result);
+        }
+
+        //Function Calculate TotalPrice
+        [HttpGet("calculate-total-price")]
+        public async Task<IActionResult> CalculateTotalPrice(decimal price, decimal discount, int quantity)
+        {
+            var result = await _db.Database
+                .SqlQuery<decimal>($"SELECT dbo.udf_Product_GetTotalPrice({price}, {discount}, {quantity}) AS Value")
+                .FirstOrDefaultAsync();
+
+            return Ok(new
+            {
+                Price = price,
+                Discount = discount,
+                Quantity = quantity,
+                TotalPrice = result
+            });
+        }
+
+        //Function Convert to SEO URL
+        [HttpGet("convert-to-seo-url")]
+        public async Task<IActionResult> ConvertToSeoUrl(string text)
+        {
+            var result = await _db.Database
+                .SqlQuery<string>($"SELECT dbo.udf_ConvertToSeoUrl({text}) AS Value")
+                .FirstOrDefaultAsync();
+
+            return Ok(new
+            {
+                OriginalText = text,
+                SeoUrl = result
+            });
         }
     }
 }

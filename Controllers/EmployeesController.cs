@@ -63,23 +63,43 @@ namespace OnlineShopApi.Controllers
         }
 
         // Hiển thị tất cả các nhân viên bán hàng với tổng số tiền bán được
-        [HttpGet("employees-total-sales")]
-        public async Task<IActionResult> GetEmployeesTotalSales()
+        // gồm các fields: Id, Name, Address, PhoneNumber, Total
+        // Dùng INNER JOIN + GROUP BY với lệnh SUM
+        [HttpGet("employees-total")]
+        public async Task<IActionResult> GetEmployeesTotal()
         {
             var result = await _db.Employees
-                .Select(e => new
+                .Join(_db.Orders,
+                    e => e.EmployeeId,
+                    o => o.EmployeeId,
+                    (e, o) => new { e, o })
+                .Join(_db.OrderDetails,
+                    eo => eo.o.OrderId,
+                    od => od.OrderId,
+                    (eo, od) => new
+                    {
+                        eo.e.EmployeeId,
+                        eo.e.FullName,
+                        eo.e.Address,
+                        eo.e.Phone,
+                        ThanhTien = od.Quantity * od.UnitPrice * (1 - od.Discount / 100m)
+                    })
+                .GroupBy(x => new
                 {
-                    e.EmployeeId,
-                    e.FullName,
-                    TongDoanhSo = _db.Orders
-                        .Where(o => o.EmployeeId == e.EmployeeId)
-                        .Join(_db.OrderDetails,
-                            o => o.OrderId,
-                            od => od.OrderId,
-                            (o, od) => od.Quantity * od.UnitPrice * (1 - od.Discount / 100m))
-                        .Sum()
+                    x.EmployeeId,
+                    x.FullName,
+                    x.Address,
+                    x.Phone
                 })
-                .OrderByDescending(x => x.TongDoanhSo)
+                .Select(g => new
+                {
+                    Id = g.Key.EmployeeId,
+                    Name = g.Key.FullName,
+                    Address = g.Key.Address,
+                    PhoneNumber = g.Key.Phone,
+                    Total = g.Sum(x => x.ThanhTien)
+                })
+                .OrderByDescending(x => x.Total)
                 .ToListAsync();
 
             return Ok(result);
@@ -128,6 +148,75 @@ namespace OnlineShopApi.Controllers
                 })
                 .OrderByDescending(x => x.TongSoTienBanDuoc)
                 .Take(3)
+                .ToListAsync();
+
+            return Ok(result);
+        }
+
+        // Hiển thị tất cả các nhân viên không bán được hàng
+        // gồm các fields: Id, Name, Address, PhoneNumber
+        [HttpGet("employees-not-sold")]
+        public async Task<IActionResult> GetEmployeesNotSold()
+        {
+            var result = await _db.Employees
+                .Where(e => !_db.Orders
+                    .Where(o => o.EmployeeId == e.EmployeeId)
+                    .Join(_db.OrderDetails,
+                        o => o.OrderId,
+                        od => od.OrderId,
+                        (o, od) => od)
+                    .Any())
+                .Select(e => new
+                {
+                    Id = e.EmployeeId,
+                    Name = e.FullName,
+                    Address = e.Address,
+                    PhoneNumber = e.Phone
+                })
+                .ToListAsync();
+
+            return Ok(result);
+        }
+
+        // Hiển thị tất cả các nhân viên bán hàng theo trạng thái @Status
+        // với tổng số tiền bán được trong khoảng từ ngày @FromDate đến ngày @ToDate
+        [HttpGet("employees-total-by-status-and-date-range")]
+        public async Task<IActionResult> GetEmployeesTotalByStatusAndDateRange(string Status, DateTime FromDate, DateTime ToDate)
+        {
+            var result = await _db.Employees
+                .Join(_db.Orders.Where(o => o.Status == Status
+                                         && o.OrderDate.Date >= FromDate.Date
+                                         && o.OrderDate.Date <= ToDate.Date),
+                    e => e.EmployeeId,
+                    o => o.EmployeeId,
+                    (e, o) => new { e, o })
+                .Join(_db.OrderDetails,
+                    eo => eo.o.OrderId,
+                    od => od.OrderId,
+                    (eo, od) => new
+                    {
+                        eo.e.EmployeeId,
+                        eo.e.FullName,
+                        eo.e.Address,
+                        eo.e.Phone,
+                        ThanhTien = od.Quantity * od.UnitPrice * (1 - od.Discount / 100m)
+                    })
+                .GroupBy(x => new
+                {
+                    x.EmployeeId,
+                    x.FullName,
+                    x.Address,
+                    x.Phone
+                })
+                .Select(g => new
+                {
+                    Id = g.Key.EmployeeId,
+                    Name = g.Key.FullName,
+                    Address = g.Key.Address,
+                    PhoneNumber = g.Key.Phone,
+                    Total = g.Sum(x => x.ThanhTien)
+                })
+                .OrderByDescending(x => x.Total)
                 .ToListAsync();
 
             return Ok(result);

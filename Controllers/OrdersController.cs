@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using OnlineShop.Data;
+using OnlineShopApi.Dtos;
 
 namespace OnlineShopApi.Controllers
 {
@@ -720,6 +721,161 @@ namespace OnlineShopApi.Controllers
             var result = ordersWithTotal
                 .Where(x => x.TongSoTien == minValue)
                 .ToList();
+
+            return Ok(result);
+        }
+
+        // Hiển thị tất cả các đơn hàng cùng với thông tin chi tiết khách hàng Customer và Employee
+        // gồm các fields: Id, OrderDate, Status, CustomerId, CustomerName, CustomerAddress, CustomerPhone,
+        // EmployeeId, EmployeeName, EmployeeAddress, EmployeePhone, Total
+        [HttpGet("orders-customer-employee-detail")]
+        public async Task<IActionResult> GetOrdersCustomerEmployeeDetail()
+        {
+            var result = await _db.Orders
+                .Select(o => new
+                {
+                    Id = o.OrderId,
+                    OrderDate = o.OrderDate,
+                    Status = o.Status,
+
+                    CustomerId = o.Customer.CustomerId,
+                    CustomerName = o.Customer.FullName,
+                    CustomerAddress = o.Customer.Address,
+                    CustomerPhone = o.Customer.Phone,
+
+                    EmployeeId = o.EmployeeId,
+                    EmployeeName = o.Employee != null ? o.Employee.FullName : null,
+                    EmployeeAddress = o.Employee != null ? o.Employee.Address : null,
+                    EmployeePhone = o.Employee != null ? o.Employee.Phone : null,
+
+                    Total = o.OrderDetails.Sum(od => od.Quantity * od.UnitPrice * (1 - od.Discount / 100m))
+                })
+                .ToListAsync();
+
+            return Ok(result);
+        }
+
+        // Hiển thị tất cả các đơn hàng có trạng thái là @Status trong ngày @Date
+        [HttpGet("orders-by-status-and-date")]
+        public async Task<IActionResult> GetOrdersByStatusAndDate(string Status, DateTime Date)
+        {
+            DateTime fromDate = Date.Date;
+            DateTime toDate = fromDate.AddDays(1);
+
+            var result = await _db.Orders
+                .Where(o => o.Status == Status &&
+                            o.OrderDate >= fromDate &&
+                            o.OrderDate < toDate)
+                .Select(o => new
+                {
+                    Id = o.OrderId,
+                    CustomerId = o.CustomerId,
+                    EmployeeId = o.EmployeeId,
+                    OrderDate = o.OrderDate,
+                    Status = o.Status,
+                    PaymentMethod = o.PaymentMethod,
+                    ShipAddress = o.ShipAddress
+                })
+                .ToListAsync();
+
+            return Ok(result);
+        }
+
+        // Hiển thị tất cả các đơn hàng chưa hoàn thành trong tháng @Month của năm @Year
+        [HttpGet("not-completed-by-month-year")]
+        public async Task<IActionResult> GetNotCompletedOrdersByMonthYear(int Month, int Year)
+        {
+            var result = await _db.Orders
+                .Where(o => o.Status != "COMPLETED" &&
+                            o.OrderDate.Month == Month &&
+                            o.OrderDate.Year == Year)
+                .Select(o => new
+                {
+                    Id = o.OrderId,
+                    CustomerId = o.CustomerId,
+                    EmployeeId = o.EmployeeId,
+                    OrderDate = o.OrderDate,
+                    Status = o.Status,
+                    PaymentMethod = o.PaymentMethod,
+                    ShipAddress = o.ShipAddress
+                })
+                .ToListAsync();
+
+            return Ok(result);
+        }
+
+        // Hiển thị tất cả các đơn hàng có hình thức thanh toán là @PaymentMethod
+        [HttpGet("orders-by-payment-method")]
+        public async Task<IActionResult> GetOrdersByPaymentMethod(string PaymentMethod)
+        {
+            var result = await _db.Orders
+                .Where(o => o.PaymentMethod == PaymentMethod)
+                .Select(o => new
+                {
+                    Id = o.OrderId,
+                    CustomerId = o.CustomerId,
+                    EmployeeId = o.EmployeeId,
+                    OrderDate = o.OrderDate,
+                    Status = o.Status,
+                    PaymentMethod = o.PaymentMethod,
+                    ShipAddress = o.ShipAddress
+                })
+                .ToListAsync();
+
+            return Ok(result);
+        }
+
+        // Hiển thị tất cả đơn hàng theo trạng thái @Status
+        // với tổng số tiền của đơn hàng đó trong khoảng từ ngày @FromDate đến ngày @ToDate
+        [HttpGet("orders-by-status-with-total-by-date-range")]
+        public async Task<IActionResult> GetOrdersByStatusWithTotalByDateRange(string Status, DateTime FromDate, DateTime ToDate)
+        {
+            var result = await _db.Orders
+                .Where(o => o.Status == Status
+                         && o.OrderDate.Date >= FromDate.Date
+                         && o.OrderDate.Date <= ToDate.Date)
+                .Select(o => new
+                {
+                    Id = o.OrderId,
+                    CustomerId = o.CustomerId,
+                    EmployeeId = o.EmployeeId,
+                    OrderDate = o.OrderDate,
+                    Status = o.Status,
+                    PaymentMethod = o.PaymentMethod,
+                    ShipAddress = o.ShipAddress,
+                    Total = o.OrderDetails.Sum(od => od.Quantity * od.UnitPrice * (1 - od.Discount / 100m))
+                })
+                .OrderByDescending(x => x.Total)
+                .ToListAsync();
+
+            return Ok(result);
+        }
+
+        //Function Order GetTotalPrice
+        [HttpGet("order-total-price")]
+        public async Task<IActionResult> GetOrderTotalPrice(int orderId)
+        {
+            var result = await _db.Database
+                .SqlQuery<decimal>($"SELECT dbo.udf_Order_GetTotalPrice({orderId}) AS Value")
+                .FirstOrDefaultAsync();
+
+            return Ok(new
+            {
+                OrderId = orderId,
+                TotalPrice = result
+            });
+        }
+
+        //Function GetOrderDetails
+        [HttpGet("order-details-function")]
+        public async Task<IActionResult> GetOrderDetailsFunction(int orderId)
+        {
+            var result = await _db.Database
+                .SqlQuery<OrderDetailDto>($"""
+            SELECT *
+            FROM dbo.udf_Order_GetOrderDetails({orderId})
+        """)
+                .ToListAsync();
 
             return Ok(result);
         }
